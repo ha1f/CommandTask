@@ -10,13 +10,13 @@ import Foundation
 
 class CommandTask {
     
-    private static let ENCODING = NSUTF8StringEncoding
+    private static let ENCODING = String.Encoding.utf8
     
-    private let task = NSTask()
-    private let outputPipe = NSPipe()
-    private let inputPipe = NSPipe()
+    private let task = Process()
+    private let outputPipe = Pipe()
+    private let inputPipe = Pipe()
     
-    private var outputObserver: (String -> ())?
+    private var outputObserver: ((String) -> ())?
     private var completionHandler: (() -> ())?
     
     init(cmd: String, arguments: [String] = []) {
@@ -26,17 +26,17 @@ class CommandTask {
         task.standardOutput = outputPipe
     }
     
-    func setCurrentDirectoryPath(path: String) -> Self {
+    func setCurrentDirectoryPath(_ path: String) -> Self {
         task.currentDirectoryPath = path
         return self
     }
     
-    func addObserver(observer: String -> ()) -> Self {
+    func addObserver(_ observer: @escaping (String) -> ()) -> Self {
         self.outputObserver = observer
         return self
     }
     
-    func addCompletionHandler(handler: () -> ()) -> Self {
+    func addCompletionHandler(_ handler: @escaping () -> ()) -> Self {
         self.completionHandler = handler
         return self
     }
@@ -46,17 +46,17 @@ class CommandTask {
     }
     
     func launch() -> Self {
-        guard !task.running else {
+        guard !task.isRunning else {
             return self
         }
         
-        NSNotificationCenter.defaultCenter().addObserverForName(NSFileHandleDataAvailableNotification, object: outputPipe.fileHandleForReading, queue: nil, usingBlock:  { [weak self] (notification: NSNotification!) in
+        NotificationCenter.default.addObserver(forName: NSNotification.Name.NSFileHandleDataAvailable, object: outputPipe.fileHandleForReading, queue: nil, using:  { [weak self] (notification: Notification!) in
             guard let `self` = self else {
                 return
             }
             
-            let dataHandler: (NSData) -> () = { data in
-                if let outStr = NSString(data: data, encoding: CommandTask.ENCODING) {
+            let dataHandler: (Data) -> () = { data in
+                if let outStr = NSString(data: data, encoding: CommandTask.ENCODING.rawValue) {
                     let s = outStr as String
                     if s != "" {
                         self.outputObserver?(s)
@@ -65,7 +65,7 @@ class CommandTask {
             }
             dataHandler(self.outputPipe.fileHandleForReading.availableData)
             
-            if self.task.running {
+            if self.task.isRunning {
                 self.outputPipe.fileHandleForReading.waitForDataInBackgroundAndNotify()
             } else {
                 // タスクがすでに終了していたら、最後までデータを読む
@@ -88,7 +88,7 @@ class CommandTask {
     
     func terminate() {
         task.terminate()
-        NSNotificationCenter.defaultCenter().removeObserver(self, name: NSFileHandleDataAvailableNotification, object: outputPipe.fileHandleForReading)
+        NotificationCenter.default.removeObserver(self, name: NSNotification.Name.NSFileHandleDataAvailable, object: outputPipe.fileHandleForReading)
     }
     
     func waitUntilExit() -> Int32 {
@@ -108,17 +108,17 @@ class CommandTask {
         task.interrupt()
     }
     
-    func writeData(data: NSData) {
-        inputPipe.fileHandleForWriting.writeData(data)
+    func writeData(_ data: Data) {
+        inputPipe.fileHandleForWriting.write(data)
     }
     
-    func write(string: String) {
-        if let data = string.dataUsingEncoding(CommandTask.ENCODING) {
+    func write(_ string: String) {
+        if let data = string.data(using: CommandTask.ENCODING) {
             writeData(data)
         }
     }
     
-    func writeln(string: String) {
+    func writeln(_ string: String) {
         write(string + "\n")
     }
     
