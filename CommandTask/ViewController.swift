@@ -10,11 +10,11 @@ import Cocoa
 
 class ViewController: NSViewController {
     
-    var task: CommandTask!
+    //var task: CommandTask!
 
     override func viewDidLoad() {
         super.viewDidLoad()
-        task = CommandTask(cmd: "/usr/bin/curl", arguments: ["https://qiita.com"])
+        _ = CommandTask(cmd: "/usr/bin/curl", arguments: ["https://qiita.com"])
             .addObserver { string in
                 print("observe", string)}
             .addCompletionHandler {

@@ -8,9 +8,10 @@
 
 import Foundation
 
-class CommandTask {
+class CommandTask: Equatable {
     
     private static let ENCODING = String.Encoding.utf8
+    private static var tasks = [CommandTask]()
     
     private let task = Process()
     private let outputPipe = Pipe()
@@ -24,6 +25,10 @@ class CommandTask {
         task.arguments = arguments
         task.standardInput = inputPipe
         task.standardOutput = outputPipe
+    }
+    
+    static func ==(lhs: CommandTask, rhs: CommandTask) -> Bool {
+        return lhs.task == rhs.task
     }
     
     func setCurrentDirectoryPath(_ path: String) -> Self {
@@ -41,11 +46,13 @@ class CommandTask {
         return self
     }
     
-    func removeObserver() {
+    func resetObserver() {
         outputObserver = nil
+        completionHandler = nil
     }
     
     func launch() -> Self {
+        // すでに起動中なら何もしない
         guard !task.isRunning else {
             return self
         }
@@ -72,23 +79,24 @@ class CommandTask {
                 let data = self.outputPipe.fileHandleForReading.readDataToEndOfFile()
                 dataHandler(data)
                 self.completionHandler?()
+                self.terminate()
             }
-            })
+        })
         outputPipe.fileHandleForReading.waitForDataInBackgroundAndNotify()
         
-        task.terminationHandler = { [weak self] task in
-            self?.terminate()
+        /*task.terminationHandler = { [weak self] task in
+            // self?.terminate()
             // ここでcompletionHandler呼んでも、あとからNSFileHandleDataAvailableNotificationがくるので不自然
+        }*/
+        
+        if !CommandTask.tasks.contains(where: { $0 == self }) {
+            CommandTask.tasks.append(self)
         }
+        print(CommandTask.tasks)
         
         task.launch()
         
         return self
-    }
-    
-    func terminate() {
-        task.terminate()
-        NotificationCenter.default.removeObserver(self, name: NSNotification.Name.NSFileHandleDataAvailable, object: outputPipe.fileHandleForReading)
     }
     
     func waitUntilExit() -> Int32 {
@@ -96,14 +104,28 @@ class CommandTask {
         return task.terminationStatus
     }
     
+    // 終了
+    func terminate() {
+        task.terminate()
+        NotificationCenter.default.removeObserver(self, name: NSNotification.Name.NSFileHandleDataAvailable, object: outputPipe.fileHandleForReading)
+        CommandTask.tasks = CommandTask.tasks.filter { $0 != self }
+    }
+    
+    func afterTermination() {
+        
+    }
+    
+    // 再開
     func resume() -> Bool {
         return task.resume()
     }
     
+    // 一時停止
     func suspend() -> Bool {
         return task.suspend()
     }
     
+    // 中断
     func interrupt() {
         task.interrupt()
     }
@@ -113,9 +135,10 @@ class CommandTask {
     }
     
     func write(_ string: String) {
-        if let data = string.data(using: CommandTask.ENCODING) {
-            writeData(data)
+        guard let data = string.data(using: CommandTask.ENCODING) else {
+            return
         }
+        writeData(data)
     }
     
     func writeln(_ string: String) {
